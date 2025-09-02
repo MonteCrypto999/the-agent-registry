@@ -1,6 +1,10 @@
 #!/bin/sh
 
 # Run tests in CI mode before pushing
-npm run -s test:ci
+if command -v bun >/dev/null 2>&1; then
+  bun run -s test:ci
+else
+  npm run -s test:ci
+fi
 
 
