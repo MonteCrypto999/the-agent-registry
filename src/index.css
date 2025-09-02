@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@theme {
+	--color-accent-500: #6a5cff;
+	--color-accent-600: #5848ff;
+	--color-accent-700: #4338ca;
+	--color-bg: #0b0b0f;
+	--color-fg: #e7e7ea;
+	--color-muted: #9a9aa3;
+}
+
+:root {
+	color-scheme: dark;
+	background-color: var(--color-bg);
+	color: var(--color-fg);
+}
+
+html, body, #root {
+	height: 100%;
+}
+
+a {
+	color: var(--color-accent-500);
+}
+
+a:hover {
+	color: var(--color-accent-600);
+}
