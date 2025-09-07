@@ -12,6 +12,19 @@ dist
 dist-ssr
 *.local
 
+# Env files (keep example tracked)
+.env
+.env.*
+!.env.local.example
+
+# Coverage and caches
+coverage
+.eslintcache
+.vite
+
+# OS-specific
+Thumbs.db
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -22,3 +35,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Supabase CLI temp files
+supabase/.temp/
+supabase/.branches/
+supabase/.env
+
+.env.local

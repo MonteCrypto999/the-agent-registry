@@ -1,16 +1,16 @@
 @import "tailwindcss";
 
 @theme {
-	--color-accent-500: #6a5cff;
-	--color-accent-600: #5848ff;
-	--color-accent-700: #4338ca;
-	--color-bg: #0b0b0f;
-	--color-fg: #e7e7ea;
-	--color-muted: #9a9aa3;
+	--color-accent-500: #0B35F1;
+	--color-accent-600: #0A2FE0;
+	--color-accent-700: #0929C2;
+	--color-bg: #FFFFFF;
+	--color-fg: #000000;
+	--color-muted: #6B7280;
 }
 
 :root {
-	color-scheme: dark;
+	color-scheme: light;
 	background-color: var(--color-bg);
 	color: var(--color-fg);
 }
@@ -19,10 +19,27 @@ html, body, #root {
 	height: 100%;
 }
 
-a {
+/* Base link color for plain text links */
+a:not(.btn):not([class*="bg-"]) {
 	color: var(--color-accent-500);
 }
 
-a:hover {
+a:not(.btn):not([class*="bg-"]):hover {
 	color: var(--color-accent-600);
+}
+
+/* Wallet adapter trigger tweaks */
+.wallet-adapter-button-trigger {
+	background-color: var(--color-accent-600) !important;
+	color: #fff !important;
+	padding: 0.375rem 0.75rem !important; /* ~6px 12px */
+	font-size: 0.875rem !important; /* text-sm */
+	line-height: 1.25rem !important;
+	border-radius: 0.375rem !important; /* rounded */
+}
+.wallet-adapter-button-trigger:hover,
+.wallet-adapter-button-trigger:focus,
+.wallet-adapter-button-trigger:active {
+	background-color: var(--color-accent-700) !important;
+	color: #fff !important;
 }
