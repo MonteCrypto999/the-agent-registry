@@ -51,7 +51,7 @@ Vite automatically copies `public/data/seed.sql` into the final build, and it wi
 
 ## Online mode (Supabase)
 
-1) Create a Supabase project
+1) Create a [Supabase project](https://supabase.com/)
 2) Apply the migration:
    - File: `supabase/migrations/0001_init.sql`
    - Includes schema (agents, tags, agent_tags, agent_interfaces), RLS, and a simple seed (tags + an example agent)
