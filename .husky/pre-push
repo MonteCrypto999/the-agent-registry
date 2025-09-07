@@ -4,7 +4,7 @@
 if command -v bun >/dev/null 2>&1; then
   bun run --silent test:ci
 else
-  npm run -s test:ci
+  npm run --silent test:ci
 fi
 
 
