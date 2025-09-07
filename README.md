@@ -1,5 +1,7 @@
 # The Agent Registry
 
+![Demo](./src/assets/demo.jpg)
+
 The Agent Registry is a lightweight, production‑ready register for AI agents. Launch a polished, searchable catalog in minutes—locally (no backend) or online (Supabase).
 
 What you get out of the box:
@@ -77,6 +79,14 @@ bun run dev
 Notes:
 - The app automatically switches to online mode if `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set. You can also force via URL: `?mode=online` (or go back to local with `?mode=local`).
 - Reads (lists/details) are implemented against Supabase. Advanced writes may require Edge Functions depending on your security rules.
+
+### Data modes
+
+- `local` (default): uses PGlite (embedded Postgres) with schema and `public/data/seed.sql`.
+- `online`: uses Supabase via `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+- `seed`: bypasses DB and serves the in-repo fake catalog from `src/seed.ts` (read-only), useful for quick demos/tests.
+
+You can select via `.env.local` with `VITE_DATA_MODE=local|online|seed` or override using the URL `?mode=...`.
 
 ### Supabase RLS
 

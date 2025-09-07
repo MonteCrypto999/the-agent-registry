@@ -4,7 +4,7 @@ export default function HowItWorks() {
 			<section className="space-y-2">
 				<h1 className="text-3xl font-bold">How it works</h1>
 				<p className="text-[var(--color-muted)]">
-					ElizaOS Registry helps you discover, evaluate, and submit ElizaOS-powered agents. Browse the
+					The Agent Registry helps you discover, evaluate, and submit AI agents. Browse the
 					catalog, filter with tags, expand inline API details, or jump straight to a website.
 				</p>
 			</section>
