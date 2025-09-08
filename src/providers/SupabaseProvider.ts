@@ -1,5 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { AgentWithRelations, CreateAgentInput } from '../types'
+import type { InterfaceKind, AccessPolicy } from '../types'
+import { buildAgentCreateMessage, toBase64 } from '../lib/signing'
 
 export function createSupabase(): SupabaseClient {
 	const url = import.meta.env.VITE_SUPABASE_URL as string
@@ -139,6 +141,71 @@ export async function supabaseCreateAgent(supabase: SupabaseClient, input: Creat
     }
 
     return { id, slug }
+}
+
+
+export async function supabaseCreateAgentSigned(
+  supabase: SupabaseClient,
+  input: CreateAgentInput & {
+    ownerWalletBase58: string
+    pubkeyBytes: Uint8Array
+    signatureBytes: Uint8Array
+    nonce: string
+    tsISO: string
+  }
+): Promise<{ id: string; slug: string }> {
+  const secondary = (input.secondaryInterfaces ?? []).map((s) => ({
+    kind: s.kind as InterfaceKind,
+    url: s.url,
+    access: (s.accessPolicy ?? '') as AccessPolicy | '',
+    keyRequestUrl: s.keyRequestUrl ?? '',
+    displayName: s.displayName ?? '',
+    notes: s.notes ?? '',
+  }))
+
+  const msg = buildAgentCreateMessage({
+    slug: input.slug,
+    name: input.name,
+    summary: input.summary,
+    thumbnailUrl: input.thumbnailUrl ?? '',
+    websiteUrl: input.websiteUrl ?? '',
+    primaryKind: input.primaryInterface.kind,
+    primaryUrl: input.primaryInterface.url,
+    primaryAccess: input.primaryInterface.kind === 'api' ? (input.primaryInterface.accessPolicy ?? 'public') : '',
+    keyRequestUrl: input.primaryInterface.kind === 'api' ? (input.primaryInterface.keyRequestUrl ?? '') : '',
+    secondary,
+    tagSlugs: input.tagSlugs ?? [],
+    ownerWalletBase58: input.ownerWalletBase58,
+    donationWallet: input.donationWallet ?? '',
+    nonce: input.nonce,
+    tsISO: input.tsISO,
+  })
+
+  const pubkeyB64 = toBase64(input.pubkeyBytes)
+  const sigB64 = toBase64(input.signatureBytes)
+
+  const { data, error } = await supabase.rpc('create_agent_signed', {
+    p_slug: input.slug,
+    p_name: input.name,
+    p_summary: input.summary,
+    p_thumbnail_url: input.thumbnailUrl ?? '',
+    p_website_url: input.websiteUrl ?? '',
+    p_primary_kind: input.primaryInterface.kind,
+    p_primary_url: input.primaryInterface.url,
+    p_primary_access: input.primaryInterface.kind === 'api' ? (input.primaryInterface.accessPolicy ?? 'public') : '',
+    p_primary_key_request_url: input.primaryInterface.kind === 'api' ? (input.primaryInterface.keyRequestUrl ?? '') : '',
+    p_secondary: secondary,
+    p_tag_slugs: input.tagSlugs ?? [],
+    p_owner_wallet_base58: input.ownerWalletBase58,
+    p_donation_wallet: input.donationWallet ?? '',
+    p_pubkey_b64: pubkeyB64,
+    p_sig_b64: sigB64,
+    p_nonce: input.nonce,
+    p_ts: input.tsISO,
+  })
+  if (error) throw error
+  const row = (data as any[])[0]
+  return { id: row.id as string, slug: row.slug as string }
 }
 
 

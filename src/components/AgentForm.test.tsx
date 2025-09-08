@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import AgentForm from './AgentForm'
 
 describe('AgentForm', () => {
@@ -8,9 +8,11 @@ describe('AgentForm', () => {
     render(<AgentForm onSubmit={onSubmit} />)
     fireEvent.change(screen.getByLabelText(/Name/i), { target: { value: 'My Agent' } })
     fireEvent.change(screen.getByLabelText(/Summary/i), { target: { value: 'Desc' } })
+    fireEvent.change(screen.getByLabelText(/Website URL/i), { target: { value: 'https://example.com' } })
+    fireEvent.change(screen.getByLabelText(/Thumbnail URL/i), { target: { value: 'https://example.com/logo.png' } })
     fireEvent.change(screen.getByLabelText(/Primary URL/i), { target: { value: 'https://example.com' } })
     fireEvent.click(screen.getByRole('button', { name: /Save/i }))
-    expect(onSubmit).toHaveBeenCalled()
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
   })
 })
 

@@ -1,5 +1,6 @@
 -- Enable extensions used
 create extension if not exists pgcrypto;
+create extension if not exists pgsodium;
 
 -- Core tables
 create table if not exists public.agents (
@@ -45,6 +46,161 @@ create table if not exists public.agent_interfaces (
 
 create unique index if not exists ux_agent_interfaces_primary on public.agent_interfaces(agent_id) where is_primary;
 
+-- Anti-replay nonce store
+create table if not exists public.used_nonces (
+  nonce text primary key,
+  created_at timestamptz not null default now()
+);
+
+-- Ed25519 verification (base64 inputs)
+create or replace function public.ed25519_verify_b64(sig_b64 text, msg text, pubkey_b64 text)
+returns boolean
+language sql
+immutable
+as $$
+  select pgsodium.crypto_sign_verify_detached(
+    decode(sig_b64, 'base64'),
+    convert_to(msg, 'utf8'),
+    decode(pubkey_b64, 'base64')
+  );
+$$;
+
+-- Canonical message builder for signed create (versioned)
+create or replace function public.build_agent_create_message(
+  p_slug text,
+  p_name text,
+  p_summary text,
+  p_thumbnail_url text,
+  p_website_url text,
+  p_primary_kind text,
+  p_primary_url text,
+  p_primary_access text,
+  p_primary_key_request_url text,
+  p_secondary jsonb,
+  p_tag_slugs text[],
+  p_owner_wallet_base58 text,
+  p_donation_wallet text,
+  p_nonce text,
+  p_ts timestamptz
+) returns text
+language sql
+immutable
+as $$
+  select
+    'v1' || E'\n' ||
+    coalesce(p_slug,'') || E'\n' ||
+    coalesce(p_name,'') || E'\n' ||
+    coalesce(p_summary,'') || E'\n' ||
+    coalesce(p_thumbnail_url,'') || E'\n' ||
+    coalesce(p_website_url,'') || E'\n' ||
+    coalesce(p_primary_kind,'') || E'\n' ||
+    coalesce(p_primary_url,'') || E'\n' ||
+    coalesce(p_primary_access,'') || E'\n' ||
+    coalesce(p_primary_key_request_url,'') || E'\n' ||
+    (
+      select string_agg(
+        (coalesce(s->>'kind','') || '|' ||
+         coalesce(s->>'url','') || '|' ||
+         coalesce(s->>'access','') || '|' ||
+         coalesce(s->>'keyRequestUrl','') || '|' ||
+         coalesce(s->>'displayName','') || '|' ||
+         coalesce(s->>'notes','')),
+        E'\n'
+        order by coalesce(s->>'displayName',''), coalesce(s->>'url','')
+      )
+      from jsonb_array_elements(coalesce(p_secondary, '[]'::jsonb)) as s
+    ) || E'\n' ||
+    (
+      select string_agg(t, E'\n' order by t) from unnest(coalesce(p_tag_slugs, array[]::text[])) as t
+    ) || E'\n' ||
+    coalesce(p_owner_wallet_base58,'') || E'\n' ||
+    coalesce(p_donation_wallet,'') || E'\n' ||
+    coalesce(p_nonce,'') || E'\n' ||
+    to_char(p_ts at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+$$;
+
+-- Signed RPC to create agent and relations
+create or replace function public.create_agent_signed(
+  p_slug text,
+  p_name text,
+  p_summary text,
+  p_thumbnail_url text,
+  p_website_url text,
+  p_primary_kind text,
+  p_primary_url text,
+  p_primary_access text,
+  p_primary_key_request_url text,
+  p_secondary jsonb,
+  p_tag_slugs text[],
+  p_owner_wallet_base58 text,
+  p_donation_wallet text,
+  p_pubkey_b64 text,
+  p_sig_b64 text,
+  p_nonce text,
+  p_ts timestamptz
+) returns table (id uuid, slug text)
+language plpgsql
+security definer
+as $$
+declare
+  v_msg text;
+  v_id uuid;
+  v_slug text;
+begin
+  if p_ts < now() - interval '5 minutes' or p_ts > now() + interval '5 minutes' then
+    raise exception 'signature timestamp out of window';
+  end if;
+
+  insert into public.used_nonces(nonce) values (p_nonce);
+
+  v_msg := public.build_agent_create_message(
+    p_slug, p_name, p_summary, p_thumbnail_url, p_website_url,
+    p_primary_kind, p_primary_url, p_primary_access, p_primary_key_request_url,
+    p_secondary, p_tag_slugs, p_owner_wallet_base58, p_donation_wallet, p_nonce, p_ts
+  );
+
+  if not public.ed25519_verify_b64(p_sig_b64, v_msg, p_pubkey_b64) then
+    raise exception 'invalid signature';
+  end if;
+
+  v_slug := p_slug;
+  for i in 2..1000 loop
+    exit when not exists (select 1 from public.agents where slug = v_slug);
+    v_slug := p_slug || '-' || i::text;
+  end loop;
+
+  insert into public.agents(slug, name, summary, thumbnail_url, website_url, socials, owner_wallet, status, donation_wallet)
+  values (v_slug, p_name, p_summary, nullif(p_thumbnail_url,''), nullif(p_website_url,''), '{}'::jsonb, p_owner_wallet_base58, 'published', nullif(p_donation_wallet,''))
+  returning id into v_id;
+
+  insert into public.agent_interfaces(agent_id, kind, url, access_policy, key_request_url, is_primary)
+  values (v_id, p_primary_kind, p_primary_url, nullif(p_primary_access,''), nullif(p_primary_key_request_url,''), true);
+
+  if coalesce(jsonb_array_length(p_secondary),0) > 0 then
+    insert into public.agent_interfaces(agent_id, kind, url, access_policy, key_request_url, is_primary, display_name, notes)
+    select
+      v_id,
+      s->>'kind',
+      s->>'url',
+      nullif(s->>'access',''),
+      nullif(s->>'keyRequestUrl',''),
+      false,
+      nullif(s->>'displayName',''),
+      nullif(s->>'notes','')
+    from jsonb_array_elements(p_secondary) as s;
+  end if;
+
+  if coalesce(array_length(p_tag_slugs,1),0) > 0 then
+    insert into public.agent_tags(agent_id, tag_id)
+    select v_id, t.id
+    from public.tags t
+    where t.slug = any (p_tag_slugs);
+  end if;
+
+  return query select v_id, v_slug;
+end;
+$$;
+
 -- Enable RLS
 alter table public.agents enable row level security;
 alter table public.agent_interfaces enable row level security;
@@ -58,22 +214,35 @@ create policy if not exists agent_interfaces_read on public.agent_interfaces
 create policy if not exists agent_tags_read on public.agent_tags
   for select using (true);
 
--- Insert policies: allow anonymous inserts into agents and related tables
--- NOTE: tighten later with auth if needed
-create policy if not exists agents_insert on public.agents
-  for insert with check (true);
-create policy if not exists agent_interfaces_insert on public.agent_interfaces
-  for insert with check (exists (select 1 from public.agents a where a.id = agent_id));
-create policy if not exists agent_tags_insert on public.agent_tags
-  for insert with check (exists (select 1 from public.agents a where a.id = agent_id));
+-- Strict write policies: block direct writes (use signed RPC)
+drop policy if exists agents_insert on public.agents;
+create policy agents_insert on public.agents
+  for insert with check (false);
 
--- Update policies (optional for edit flow)
-create policy if not exists agents_update on public.agents
-  for update using (true) with check (true);
-create policy if not exists agent_interfaces_update on public.agent_interfaces
-  for update using (exists (select 1 from public.agents a where a.id = agent_id)) with check (exists (select 1 from public.agents a where a.id = agent_id));
-create policy if not exists agent_tags_update on public.agent_tags
-  for update using (exists (select 1 from public.agents a where a.id = agent_id)) with check (exists (select 1 from public.agents a where a.id = agent_id));
+drop policy if exists agent_interfaces_insert on public.agent_interfaces;
+create policy agent_interfaces_insert on public.agent_interfaces
+  for insert with check (false);
+
+drop policy if exists agent_tags_insert on public.agent_tags;
+create policy agent_tags_insert on public.agent_tags
+  for insert with check (false);
+
+drop policy if exists agents_update on public.agents;
+create policy agents_update on public.agents
+  for update using (false) with check (false);
+
+drop policy if exists agent_interfaces_update on public.agent_interfaces;
+create policy agent_interfaces_update on public.agent_interfaces
+  for update using (false) with check (false);
+
+drop policy if exists agent_tags_update on public.agent_tags;
+create policy agent_tags_update on public.agent_tags
+  for update using (false) with check (false);
+
+-- Allow anon to call the signed RPC
+grant execute on function public.create_agent_signed(
+  text, text, text, text, text, text, text, text, text, jsonb, text[], text, text, text, text, text, timestamptz
+) to anon;
 
 
 

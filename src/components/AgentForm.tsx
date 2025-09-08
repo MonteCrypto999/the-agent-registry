@@ -109,7 +109,15 @@ export default function AgentForm({ initial, onSubmit }: { initial?: Partial<Age
 				e.preventDefault()
 				const vErr = validate(values)
 				setErrors(vErr)
-				const hasErr = Boolean(vErr.name || vErr.summary || vErr.primaryUrl || vErr.keyRequestUrl || Object.keys(vErr.secondary ?? {}).length)
+				const hasErr = Boolean(
+					vErr.name ||
+					vErr.summary ||
+					vErr.websiteUrl ||
+					vErr.thumbnailUrl ||
+					vErr.primaryUrl ||
+					vErr.keyRequestUrl ||
+					Object.keys(vErr.secondary ?? {}).length
+				)
 				if (hasErr) return
 				await onSubmit(values)
 			}}
@@ -128,12 +136,12 @@ export default function AgentForm({ initial, onSubmit }: { initial?: Partial<Age
 				</label>
 				<label className="block text-sm">
 					<span className="mb-1 block text-black/80">Website URL <span className="text-red-600">*</span></span>
-					<input value={values.websiteUrl} onChange={(e) => set('websiteUrl', e.target.value)} className="w-full rounded border border-black/10 bg-white px-3 py-2 outline-none" />
+					<input value={values.websiteUrl} onChange={(e) => set('websiteUrl', e.target.value)} className="w-full rounded border border-black/10 bg-white px-3 py-2 outline-none" required />
 					{errors.websiteUrl && <span className="mt-1 block text-xs text-red-600">{errors.websiteUrl}</span>}
 				</label>
 				<label className="block text-sm">
 					<span className="mb-1 block text-black/80">Thumbnail URL <span className="text-red-600">*</span></span>
-					<input value={values.thumbnailUrl} onChange={(e) => set('thumbnailUrl', e.target.value)} className="w-full rounded border border-black/10 bg-white px-3 py-2 outline-none" />
+					<input value={values.thumbnailUrl} onChange={(e) => set('thumbnailUrl', e.target.value)} className="w-full rounded border border-black/10 bg-white px-3 py-2 outline-none" required />
 					{errors.thumbnailUrl && <span className="mt-1 block text-xs text-red-600">{errors.thumbnailUrl}</span>}
 				</label>
 				<label className="block text-sm sm:col-span-2">

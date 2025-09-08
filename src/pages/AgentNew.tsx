@@ -3,6 +3,7 @@ import AgentForm, { type AgentFormValues } from '../components/AgentForm'
 import { useData } from '../providers/DataProvider'
 import { useNavigate } from 'react-router-dom'
 import { useMemo, useState } from 'react'
+import { buildAgentCreateMessage, toBase64 } from '../lib/signing'
 import { TAGS } from '../seed'
 import { getTagClasses } from '../lib/tagStyles'
 
@@ -10,7 +11,7 @@ const MAX_TAGS = 4
 
 export default function AgentNew() {
 	const { publicKey, connected } = useWallet()
-	const { createAgent } = useData()
+	const { createAgent, createAgentSigned } = useData() as any
 	const navigate = useNavigate()
 	const [tagSlugs, setTagSlugs] = useState<string[]>([])
 	const [error, setError] = useState<string | null>(null)
@@ -32,13 +33,44 @@ export default function AgentNew() {
 		setError(null)
 		setSubmitting(true)
 		try {
-			const result = await createAgent({
-				slug: v.name, // backend can slugify
+			// Build canonical message and sign with wallet
+			const nonce = crypto.randomUUID()
+			const tsISO = new Date().toISOString()
+			const ownerWalletBase58 = publicKey.toBase58()
+			const msg = buildAgentCreateMessage({
+				slug: v.name,
+				name: v.name,
+				summary: v.summary,
+				thumbnailUrl: v.thumbnailUrl || '',
+				websiteUrl: v.websiteUrl || '',
+				primaryKind: v.primaryKind,
+				primaryUrl: v.primaryUrl,
+				primaryAccess: v.primaryKind === 'api' ? (v.primaryAccess ?? 'public') : null,
+				keyRequestUrl: v.primaryKind === 'api' ? (v.keyRequestUrl || '') : '',
+				secondary: (v.secondary ?? []).map((s) => ({
+					kind: s.kind,
+					url: s.url,
+					access: (s.access ?? '') as any,
+					keyRequestUrl: s.keyRequestUrl || '',
+					displayName: s.displayName || '',
+					notes: s.notes || '',
+				})),
+				tagSlugs,
+				ownerWalletBase58,
+				donationWallet: v.donationWallet || '',
+				nonce,
+				tsISO,
+			})
+			// @ts-ignore signMessage present when wallet supports it
+			const signatureBytes: Uint8Array = await (window as any).solana?.signMessage ? (await (window as any).solana.signMessage(new TextEncoder().encode(msg), 'utf8')).signature : await (async () => { throw new Error('Wallet does not support message signing') })()
+			const pubkeyBytes = publicKey.toBytes()
+			const result = await (createAgentSigned ? createAgentSigned({
+				slug: v.name,
 				name: v.name,
 				summary: v.summary,
 				thumbnailUrl: v.thumbnailUrl || undefined,
 				websiteUrl: v.websiteUrl || undefined,
-				ownerWallet: publicKey.toBase58(),
+				ownerWallet: ownerWalletBase58,
 				primaryInterface: {
 					kind: v.primaryKind,
 					url: v.primaryUrl,
@@ -55,7 +87,35 @@ export default function AgentNew() {
 				})),
 				tagSlugs,
 				donationWallet: v.donationWallet || null,
-			})
+				ownerWalletBase58,
+				pubkeyBytes,
+				signatureBytes,
+				nonce,
+				tsISO,
+			}) : createAgent({
+				slug: v.name,
+				name: v.name,
+				summary: v.summary,
+				thumbnailUrl: v.thumbnailUrl || undefined,
+				websiteUrl: v.websiteUrl || undefined,
+				ownerWallet: ownerWalletBase58,
+				primaryInterface: {
+					kind: v.primaryKind,
+					url: v.primaryUrl,
+					accessPolicy: v.primaryKind === 'api' ? (v.primaryAccess ?? 'public') : null,
+					keyRequestUrl: v.primaryKind === 'api' ? (v.keyRequestUrl || null) : null,
+				},
+				secondaryInterfaces: (v.secondary ?? []).map((s) => ({
+					kind: s.kind,
+					url: s.url,
+					accessPolicy: s.access ?? null,
+					keyRequestUrl: s.keyRequestUrl || null,
+					displayName: s.displayName || null,
+					notes: s.notes || null,
+				})),
+				tagSlugs,
+				donationWallet: v.donationWallet || null,
+			}) )
 			navigate(`/agent/${result.id}`)
 		} catch (e: any) {
 			setError(e?.message ?? 'Failed to create agent')

@@ -1,12 +1,13 @@
 import { createContext, useContext, useMemo } from 'react'
 import type { AgentWithRelations, CreateAgentInput, UpdateAgentInput } from '../types'
 import { listAgentsWithRelations, createAgent, updateAgentBySlug, getAgentById as getAgentByIdLocal, updateAgentById } from '../db/pglite'
-import { createSupabase, supabaseListAgents, supabaseCreateAgent, supabaseGetAgentById } from './SupabaseProvider'
+import { createSupabase, supabaseListAgents, supabaseCreateAgent, supabaseGetAgentById, supabaseCreateAgentSigned } from './SupabaseProvider'
 import { AGENTS } from '../seed'
 
 interface DataContextValue {
 	listAgents(): Promise<AgentWithRelations[]>
 	createAgent(input: CreateAgentInput): Promise<{ id: string; slug: string }>
+	createAgentSigned?(input: CreateAgentInput & { ownerWalletBase58: string; pubkeyBytes: Uint8Array; signatureBytes: Uint8Array; nonce: string; tsISO: string }): Promise<{ id: string; slug: string }>
 	updateAgentBySlug: typeof updateAgentBySlug
     getAgentById(id: string): Promise<AgentWithRelations | null>
     updateAgentById: typeof updateAgentById
@@ -34,7 +35,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 					return supabaseListAgents(supabase)
 				},
 				async createAgent(_input: CreateAgentInput) {
+					// Fallback: old direct insert (kept for backward compatibility)
 					return supabaseCreateAgent(supabase, _input)
+				},
+				// Signed variant exposed via context (optional usage from pages)
+				async createAgentSigned(params: Parameters<typeof supabaseCreateAgentSigned>[1]) {
+					return supabaseCreateAgentSigned(supabase, params)
 				},
 				async updateAgentBySlug(_slug: string, _input: UpdateAgentInput) {
 					throw new Error('Online mode: updateAgentBySlug not implemented')
@@ -57,6 +63,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 				async createAgent(_input: CreateAgentInput) {
 					throw new Error('Seed mode: createAgent not supported')
 				},
+				async createAgentSigned() {
+					throw new Error('Seed mode: createAgentSigned not supported')
+				},
 				async updateAgentBySlug(_slug: string, _input: UpdateAgentInput) {
 					throw new Error('Seed mode: updateAgentBySlug not supported')
 				},
@@ -76,6 +85,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 				return listAgentsWithRelations()
 			},
 			createAgent,
+			async createAgentSigned() {
+				throw new Error('Local mode: createAgentSigned not supported')
+			},
 			updateAgentBySlug,
 			async getAgentById(id: string) {
 				return (await getAgentByIdLocal(id)) as unknown as AgentWithRelations | null
