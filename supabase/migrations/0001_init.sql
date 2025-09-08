@@ -1,6 +1,8 @@
 -- Enable extensions used
 create extension if not exists pgcrypto;
 create extension if not exists pgsodium;
+create extension if not exists pg_base58;
+create extension if not exists pg_cron;
 
 -- Core tables
 create table if not exists public.agents (
@@ -95,35 +97,35 @@ immutable
 as $$
   select
     'v1' || E'\n' ||
-    coalesce(p_slug,'') || E'\n' ||
-    coalesce(p_name,'') || E'\n' ||
-    coalesce(p_summary,'') || E'\n' ||
-    coalesce(p_thumbnail_url,'') || E'\n' ||
-    coalesce(p_website_url,'') || E'\n' ||
-    coalesce(p_primary_kind,'') || E'\n' ||
-    coalesce(p_primary_url,'') || E'\n' ||
-    coalesce(p_primary_access,'') || E'\n' ||
-    coalesce(p_primary_key_request_url,'') || E'\n' ||
+    encode(convert_to(coalesce(p_slug,''), 'utf8'), 'base64') || E'\n' ||
+    encode(convert_to(coalesce(p_name,''), 'utf8'), 'base64') || E'\n' ||
+    encode(convert_to(coalesce(p_summary,''), 'utf8'), 'base64') || E'\n' ||
+    encode(convert_to(coalesce(p_thumbnail_url,''), 'utf8'), 'base64') || E'\n' ||
+    encode(convert_to(coalesce(p_website_url,''), 'utf8'), 'base64') || E'\n' ||
+    encode(convert_to(coalesce(p_primary_kind,''), 'utf8'), 'base64') || E'\n' ||
+    encode(convert_to(coalesce(p_primary_url,''), 'utf8'), 'base64') || E'\n' ||
+    encode(convert_to(coalesce(p_primary_access,''), 'utf8'), 'base64') || E'\n' ||
+    encode(convert_to(coalesce(p_primary_key_request_url,''), 'utf8'), 'base64') || E'\n' ||
     (
       select string_agg(
-        (coalesce(s->>'kind','') || '|' ||
-         coalesce(s->>'url','') || '|' ||
-         coalesce(s->>'access','') || '|' ||
-         coalesce(s->>'keyRequestUrl','') || '|' ||
-         coalesce(s->>'displayName','') || '|' ||
-         coalesce(s->>'notes','')),
+        (encode(convert_to(coalesce(s->>'kind',''), 'utf8'), 'base64') || '|' ||
+         encode(convert_to(coalesce(s->>'url',''), 'utf8'), 'base64') || '|' ||
+         encode(convert_to(coalesce(s->>'access',''), 'utf8'), 'base64') || '|' ||
+         encode(convert_to(coalesce(s->>'keyRequestUrl',''), 'utf8'), 'base64') || '|' ||
+         encode(convert_to(coalesce(s->>'displayName',''), 'utf8'), 'base64') || '|' ||
+         encode(convert_to(coalesce(s->>'notes',''), 'utf8'), 'base64')),
         E'\n'
         order by coalesce(s->>'displayName',''), coalesce(s->>'url','')
       )
       from jsonb_array_elements(coalesce(p_secondary, '[]'::jsonb)) as s
     ) || E'\n' ||
     (
-      select string_agg(t, E'\n' order by t) from unnest(coalesce(p_tag_slugs, array[]::text[])) as t
+      select string_agg(encode(convert_to(t, 'utf8'), 'base64'), E'\n' order by t) from unnest(coalesce(p_tag_slugs, array[]::text[])) as t
     ) || E'\n' ||
-    coalesce(p_owner_wallet_base58,'') || E'\n' ||
-    coalesce(p_donation_wallet,'') || E'\n' ||
-    coalesce(p_nonce,'') || E'\n' ||
-    to_char(p_ts at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+    encode(convert_to(coalesce(p_owner_wallet_base58,''), 'utf8'), 'base64') || E'\n' ||
+    encode(convert_to(coalesce(p_donation_wallet,''), 'utf8'), 'base64') || E'\n' ||
+    encode(convert_to(coalesce(p_nonce,''), 'utf8'), 'base64') || E'\n' ||
+    encode(convert_to(to_char(p_ts at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), 'utf8'), 'base64')
 $$;
 
 -- Signed RPC to create agent and relations
@@ -165,6 +167,15 @@ begin
     raise exception 'nonce already used';
   end;
 
+  -- Rate limiting: max 3 creates per wallet per minute
+  if (
+    select count(*) from public.agents
+    where owner_wallet = p_owner_wallet_base58
+      and created_at > now() - interval '1 minute'
+  ) >= 3 then
+    raise exception 'rate limited';
+  end if;
+
   v_msg := public.build_agent_create_message(
     p_slug, p_name, p_summary, p_thumbnail_url, p_website_url,
     p_primary_kind, p_primary_url, p_primary_access, p_primary_key_request_url,
@@ -173,6 +184,11 @@ begin
 
   if not public.ed25519_verify_b64(p_sig_b64, v_msg, p_pubkey_b64) then
     raise exception 'invalid signature';
+  end if;
+
+  -- Verify owner_wallet matches pubkey
+  if base58_decode(p_owner_wallet_base58) != decode(p_pubkey_b64, 'base64') then
+    raise exception 'owner wallet does not match provided pubkey';
   end if;
 
   v_slug := p_slug;
@@ -217,14 +233,29 @@ $$;
 alter table public.agents enable row level security;
 alter table public.agent_interfaces enable row level security;
 alter table public.agent_tags enable row level security;
+alter table public.tags enable row level security;
+alter table public.used_nonces enable row level security;
 
 -- Public read policies (allow reads for anonymous)
-create policy if not exists agents_read on public.agents
+drop policy if exists agents_read on public.agents;
+create policy agents_read on public.agents
   for select using (true);
-create policy if not exists agent_interfaces_read on public.agent_interfaces
+drop policy if exists agent_interfaces_read on public.agent_interfaces;
+create policy agent_interfaces_read on public.agent_interfaces
   for select using (true);
-create policy if not exists agent_tags_read on public.agent_tags
+drop policy if exists agent_tags_read on public.agent_tags;
+create policy agent_tags_read on public.agent_tags
   for select using (true);
+
+-- Tags: read-only
+drop policy if exists tags_read on public.tags;
+create policy tags_read on public.tags for select using (true);
+drop policy if exists tags_insert on public.tags;
+create policy tags_insert on public.tags for insert with check (false);
+drop policy if exists tags_update on public.tags;
+create policy tags_update on public.tags for update using (false) with check (false);
+drop policy if exists tags_delete on public.tags;
+create policy tags_delete on public.tags for delete using (false);
 
 -- Strict write policies: block direct writes (use signed RPC)
 drop policy if exists agents_insert on public.agents;
@@ -242,19 +273,38 @@ create policy agent_tags_insert on public.agent_tags
 drop policy if exists agents_update on public.agents;
 create policy agents_update on public.agents
   for update using (false) with check (false);
+drop policy if exists agents_delete on public.agents;
+create policy agents_delete on public.agents
+  for delete using (false);
 
 drop policy if exists agent_interfaces_update on public.agent_interfaces;
 create policy agent_interfaces_update on public.agent_interfaces
   for update using (false) with check (false);
+drop policy if exists agent_interfaces_delete on public.agent_interfaces;
+create policy agent_interfaces_delete on public.agent_interfaces
+  for delete using (false);
 
 drop policy if exists agent_tags_update on public.agent_tags;
 create policy agent_tags_update on public.agent_tags
   for update using (false) with check (false);
+drop policy if exists agent_tags_delete on public.agent_tags;
+create policy agent_tags_delete on public.agent_tags
+  for delete using (false);
 
 -- Allow anon to call the signed RPC
 grant execute on function public.create_agent_signed(
   text, text, text, text, text, text, text, text, text, jsonb, text[], text, text, text, text, text, timestamptz
 ) to anon;
+
+-- used_nonces: fully private (no direct access)
+drop policy if exists used_nonces_select on public.used_nonces;
+create policy used_nonces_select on public.used_nonces for select using (false);
+drop policy if exists used_nonces_insert on public.used_nonces;
+create policy used_nonces_insert on public.used_nonces for insert with check (false);
+drop policy if exists used_nonces_update on public.used_nonces;
+create policy used_nonces_update on public.used_nonces for update using (false) with check (false);
+drop policy if exists used_nonces_delete on public.used_nonces;
+create policy used_nonces_delete on public.used_nonces for delete using (false);
 
 
 
