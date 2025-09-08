@@ -10,6 +10,7 @@ describe('AgentForm', () => {
     fireEvent.change(screen.getByLabelText(/Summary/i), { target: { value: 'Desc' } })
     fireEvent.change(screen.getByLabelText(/Website URL/i), { target: { value: 'https://example.com' } })
     fireEvent.change(screen.getByLabelText(/Thumbnail URL/i), { target: { value: 'https://example.com/logo.png' } })
+    fireEvent.change(screen.getByLabelText(/Agent wallet/i), { target: { value: 'So11111111111111111111111111111111111111112' } })
     fireEvent.change(screen.getByLabelText(/Primary URL/i), { target: { value: 'https://example.com' } })
     fireEvent.click(screen.getByRole('button', { name: /Save/i }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalled())

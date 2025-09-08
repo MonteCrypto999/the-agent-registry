@@ -14,6 +14,7 @@ create table if not exists public.agents (
   website_url text,
   socials jsonb not null default '{}'::jsonb,
   owner_wallet text not null,
+  agent_wallet text not null,
   status text not null default 'published' check (status in ('draft','published','archived')),
   donation_wallet text,
   created_at timestamptz not null default now(),
@@ -88,6 +89,7 @@ create or replace function public.build_agent_create_message(
   p_secondary jsonb,
   p_tag_slugs text[],
   p_owner_wallet_base58 text,
+  p_agent_wallet text,
   p_donation_wallet text,
   p_nonce text,
   p_ts timestamptz
@@ -123,6 +125,7 @@ as $$
       select string_agg(encode(convert_to(t, 'utf8'), 'base64'), E'\n' order by t) from unnest(coalesce(p_tag_slugs, array[]::text[])) as t
     ) || E'\n' ||
     encode(convert_to(coalesce(p_owner_wallet_base58,''), 'utf8'), 'base64') || E'\n' ||
+    encode(convert_to(coalesce(p_agent_wallet,''), 'utf8'), 'base64') || E'\n' ||
     encode(convert_to(coalesce(p_donation_wallet,''), 'utf8'), 'base64') || E'\n' ||
     encode(convert_to(coalesce(p_nonce,''), 'utf8'), 'base64') || E'\n' ||
     encode(convert_to(to_char(p_ts at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), 'utf8'), 'base64')
@@ -142,6 +145,7 @@ create or replace function public.create_agent_signed(
   p_secondary jsonb,
   p_tag_slugs text[],
   p_owner_wallet_base58 text,
+  p_agent_wallet text,
   p_donation_wallet text,
   p_pubkey_b64 text,
   p_sig_b64 text,
@@ -179,7 +183,7 @@ begin
   v_msg := public.build_agent_create_message(
     p_slug, p_name, p_summary, p_thumbnail_url, p_website_url,
     p_primary_kind, p_primary_url, p_primary_access, p_primary_key_request_url,
-    p_secondary, p_tag_slugs, p_owner_wallet_base58, p_donation_wallet, p_nonce, p_ts
+    p_secondary, p_tag_slugs, p_owner_wallet_base58, p_agent_wallet, p_donation_wallet, p_nonce, p_ts
   );
 
   if not public.ed25519_verify_b64(p_sig_b64, v_msg, p_pubkey_b64) then
@@ -197,8 +201,8 @@ begin
     v_slug := p_slug || '-' || i::text;
   end loop;
 
-  insert into public.agents(slug, name, summary, thumbnail_url, website_url, socials, owner_wallet, status, donation_wallet)
-  values (v_slug, p_name, p_summary, nullif(p_thumbnail_url,''), nullif(p_website_url,''), '{}'::jsonb, p_owner_wallet_base58, 'published', nullif(p_donation_wallet,''))
+  insert into public.agents(slug, name, summary, thumbnail_url, website_url, socials, owner_wallet, agent_wallet, status, donation_wallet)
+  values (v_slug, p_name, p_summary, nullif(p_thumbnail_url,''), nullif(p_website_url,''), '{}'::jsonb, p_owner_wallet_base58, p_agent_wallet, 'published', nullif(p_donation_wallet,''))
   returning id into v_id;
 
   insert into public.agent_interfaces(agent_id, kind, url, access_policy, key_request_url, is_primary)
@@ -293,7 +297,7 @@ create policy agent_tags_delete on public.agent_tags
 
 -- Allow anon to call the signed RPC
 grant execute on function public.create_agent_signed(
-  text, text, text, text, text, text, text, text, text, jsonb, text[], text, text, text, text, text, timestamptz
+  text, text, text, text, text, text, text, text, text, jsonb, text[], text, text, text, text, text, text, timestamptz
 ) to anon;
 
 -- used_nonces: fully private (no direct access)

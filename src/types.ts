@@ -24,6 +24,7 @@ export interface Agent {
 	websiteUrl?: string | null
 	socials?: Partial<Record<SocialKeys | string, string>>
 	ownerWallet: string
+	agentWallet?: string | null
 	status: 'draft' | 'published' | 'archived'
 	links?: Record<string, string>
 	extras?: Record<string, unknown>
@@ -64,6 +65,7 @@ export interface CreateAgentInput {
   websiteUrl?: string | null
   socials?: Partial<Record<SocialKeys | string, string>>
   ownerWallet: string
+  agentWallet: string
   status?: 'draft' | 'published' | 'archived'
   primaryInterface: {
     kind: InterfaceKind

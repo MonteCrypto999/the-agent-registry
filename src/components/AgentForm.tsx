@@ -6,6 +6,7 @@ export interface AgentFormValues {
 	summary: string
 	websiteUrl?: string
 	thumbnailUrl?: string
+	agentWallet?: string
 	primaryKind: InterfaceKind
 	primaryUrl: string
 	primaryAccess?: AccessPolicy | null
@@ -27,6 +28,7 @@ export default function AgentForm({ initial, onSubmit }: { initial?: Partial<Age
 		summary: initial?.summary ?? '',
 		websiteUrl: initial?.websiteUrl ?? '',
 		thumbnailUrl: initial?.thumbnailUrl ?? '',
+		agentWallet: (initial as any)?.agentWallet ?? '',
 		primaryKind: (initial?.primaryKind ?? 'web_ui') as InterfaceKind,
 		primaryUrl: initial?.primaryUrl ?? '',
 		primaryAccess: (initial?.primaryAccess ?? null) as AccessPolicy | null,
@@ -39,6 +41,7 @@ export default function AgentForm({ initial, onSubmit }: { initial?: Partial<Age
 		summary?: string
 		websiteUrl?: string
 		thumbnailUrl?: string
+		agentWallet?: string
 		primaryUrl?: string
 		keyRequestUrl?: string
 		secondary?: Record<number, { url?: string; displayName?: string; keyRequestUrl?: string }>
@@ -78,6 +81,8 @@ export default function AgentForm({ initial, onSubmit }: { initial?: Partial<Age
 		else if (!isValidUrl(v.websiteUrl)) next.websiteUrl = 'Website URL is invalid'
 		if (!v.thumbnailUrl?.trim()) next.thumbnailUrl = 'Thumbnail URL is required'
 		else if (!isValidUrl(v.thumbnailUrl)) next.thumbnailUrl = 'Thumbnail URL is invalid'
+		if (!v.agentWallet?.trim()) next.agentWallet = 'Agent wallet is required'
+		else if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(v.agentWallet)) next.agentWallet = 'Agent wallet looks invalid'
 		if (!v.primaryUrl.trim()) next.primaryUrl = 'Primary URL is required'
 		else if (!isValidUrl(v.primaryUrl)) next.primaryUrl = 'Primary URL is invalid'
 		if (v.primaryKind === 'api' && v.primaryAccess === 'key_required' && !v.keyRequestUrl?.trim()) {
@@ -143,6 +148,12 @@ export default function AgentForm({ initial, onSubmit }: { initial?: Partial<Age
 					<span className="mb-1 block text-black/80">Thumbnail URL <span className="text-red-600">*</span></span>
 					<input value={values.thumbnailUrl} onChange={(e) => set('thumbnailUrl', e.target.value)} className="w-full rounded border border-black/10 bg-white px-3 py-2 outline-none" required />
 					{errors.thumbnailUrl && <span className="mt-1 block text-xs text-red-600">{errors.thumbnailUrl}</span>}
+				</label>
+				<label className="block text-sm sm:col-span-2">
+					<span className="mb-1 block text-black/80">Agent wallet (on-chain ID) <span className="text-red-600">*</span></span>
+					<input value={values.agentWallet} onChange={(e) => set('agentWallet', e.target.value)} placeholder="e.g. 6k7..." className="w-full rounded border border-black/10 bg-white px-3 py-2 outline-none" required />
+					{errors.agentWallet && <span className="mt-1 block text-xs text-red-600">{errors.agentWallet}</span>}
+					<span className="mt-1 block text-xs text-black/50">Used as the agent's on‑chain identifier.</span>
 				</label>
 				<label className="block text-sm sm:col-span-2">
 					<span className="mb-1 block text-black/80">Donation wallet (Solana, optional)</span>

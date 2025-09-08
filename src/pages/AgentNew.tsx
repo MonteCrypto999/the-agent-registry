@@ -57,6 +57,7 @@ export default function AgentNew() {
 				})),
 				tagSlugs,
 				ownerWalletBase58,
+				agentWallet: v.agentWallet!,
 				donationWallet: v.donationWallet || '',
 				nonce,
 				tsISO,
@@ -88,6 +89,7 @@ export default function AgentNew() {
 				tagSlugs,
 				donationWallet: v.donationWallet || null,
 				ownerWalletBase58,
+				agentWallet: v.agentWallet!,
 				pubkeyBytes,
 				signatureBytes,
 				nonce,
@@ -99,6 +101,7 @@ export default function AgentNew() {
 				thumbnailUrl: v.thumbnailUrl || undefined,
 				websiteUrl: v.websiteUrl || undefined,
 				ownerWallet: ownerWalletBase58,
+				agentWallet: v.agentWallet!,
 				primaryInterface: {
 					kind: v.primaryKind,
 					url: v.primaryUrl,

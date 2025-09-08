@@ -45,6 +45,7 @@ export async function supabaseGetAgentById(supabase: SupabaseClient, id: string)
     const { data: agents, error } = await supabase
         .from('agents')
         .select('id, slug, name, summary, thumbnail_url, website_url, socials, owner_wallet, status, donation_wallet, created_at')
+        .select('id, slug, name, summary, thumbnail_url, website_url, socials, owner_wallet, status, donation_wallet, created_at')
         .eq('id', id)
         .limit(1)
     if (error) throw error
@@ -176,6 +177,7 @@ export async function supabaseCreateAgentSigned(
     secondary,
     tagSlugs: input.tagSlugs ?? [],
     ownerWalletBase58: input.ownerWalletBase58,
+    agentWallet: input.agentWallet,
     donationWallet: input.donationWallet ?? '',
     nonce: input.nonce,
     tsISO: input.tsISO,
@@ -197,6 +199,7 @@ export async function supabaseCreateAgentSigned(
     p_secondary: secondary,
     p_tag_slugs: input.tagSlugs ?? [],
     p_owner_wallet_base58: input.ownerWalletBase58,
+    p_agent_wallet: input.agentWallet,
     p_donation_wallet: input.donationWallet ?? '',
     p_pubkey_b64: pubkeyB64,
     p_sig_b64: sigB64,
