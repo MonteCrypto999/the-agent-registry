@@ -46,6 +46,13 @@ create table if not exists public.agent_interfaces (
 
 create unique index if not exists ux_agent_interfaces_primary on public.agent_interfaces(agent_id) where is_primary;
 
+-- Performance indexes for common reads
+create index if not exists idx_agents_status_created_at on public.agents (status, created_at desc);
+create index if not exists idx_agents_owner_wallet on public.agents (owner_wallet);
+create index if not exists idx_agent_interfaces_agent_id on public.agent_interfaces (agent_id);
+create index if not exists idx_agent_tags_agent_id on public.agent_tags (agent_id);
+create index if not exists idx_agent_tags_tag_id on public.agent_tags (tag_id);
+
 -- Anti-replay nonce store
 create table if not exists public.used_nonces (
   nonce text primary key,
@@ -141,6 +148,7 @@ create or replace function public.create_agent_signed(
 ) returns table (id uuid, slug text)
 language plpgsql
 security definer
+set search_path = public
 as $$
 declare
   v_msg text;
@@ -151,7 +159,11 @@ begin
     raise exception 'signature timestamp out of window';
   end if;
 
-  insert into public.used_nonces(nonce) values (p_nonce);
+  begin
+    insert into public.used_nonces(nonce) values (p_nonce);
+  exception when unique_violation then
+    raise exception 'nonce already used';
+  end;
 
   v_msg := public.build_agent_create_message(
     p_slug, p_name, p_summary, p_thumbnail_url, p_website_url,
