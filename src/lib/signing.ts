@@ -27,42 +27,50 @@ export function buildAgentCreateMessage(input: {
   nonce: string
   tsISO: string
 }): string {
-  const enc = (s: string) => toBase64(new TextEncoder().encode(s))
+  const primaryAccess = input.primaryKind === 'api' ? (input.primaryAccess || 'public') : ''
+  const keyReq = input.primaryKind === 'api' ? (input.keyRequestUrl || '') : ''
   const secondaryLines = [...(input.secondary ?? [])]
     .sort((a, b) => (a.displayName || '').localeCompare(b.displayName || '') || a.url.localeCompare(b.url))
     .map((s) => [
-      enc(s.kind || ''),
-      enc(s.url || ''),
-      enc(s.access || ''),
-      enc(s.keyRequestUrl || ''),
-      enc(s.displayName || ''),
-      enc(s.notes || ''),
+      `kind=${s.kind || ''}`,
+      `url=${s.url || ''}`,
+      `access=${s.access || ''}`,
+      `keyRequestUrl=${s.keyRequestUrl || ''}`,
+      `displayName=${s.displayName || ''}`,
+      `notes=${s.notes || ''}`,
     ].join('|'))
     .join('\n')
+  const tagsJoined = [...(input.tagSlugs ?? [])].sort().join('\n')
 
-  const tagsJoined = [...(input.tagSlugs ?? [])].sort().map((t) => enc(t)).join('\n')
-  const primaryAccess = input.primaryKind === 'api' ? (input.primaryAccess || 'public') : ''
-  const keyReq = input.primaryKind === 'api' ? (input.keyRequestUrl || '') : ''
+  const parts: string[] = []
+  parts.push('v2')
+  parts.push('Agent')
+  parts.push(`slug: ${input.slug || ''}`)
+  parts.push(`name: ${input.name || ''}`)
+  parts.push(`summary: ${input.summary || ''}`)
+  parts.push(`thumbnailUrl: ${input.thumbnailUrl || ''}`)
+  parts.push(`websiteUrl: ${input.websiteUrl || ''}`)
+  parts.push('')
+  parts.push('Primary')
+  parts.push(`kind: ${input.primaryKind || ''}`)
+  parts.push(`url: ${input.primaryUrl || ''}`)
+  parts.push(`access: ${primaryAccess}`)
+  parts.push(`keyRequestUrl: ${keyReq}`)
+  parts.push('')
+  parts.push('Secondary')
+  if (secondaryLines) parts.push(secondaryLines)
+  parts.push('')
+  parts.push('Tags')
+  if (tagsJoined) parts.push(tagsJoined)
+  parts.push('')
+  parts.push('Security')
+  parts.push(`ownerWallet: ${input.ownerWalletBase58 || ''}`)
+  parts.push(`agentWallet: ${input.agentWallet || ''}`)
+  parts.push(`donationWallet: ${input.donationWallet || ''}`)
+  parts.push(`nonce: ${input.nonce || ''}`)
+  parts.push(`ts: ${input.tsISO}`)
 
-  return [
-    'v1',
-    enc(input.slug || ''),
-    enc(input.name || ''),
-    enc(input.summary || ''),
-    enc(input.thumbnailUrl || ''),
-    enc(input.websiteUrl || ''),
-    enc(input.primaryKind || ''),
-    enc(input.primaryUrl || ''),
-    enc(primaryAccess),
-    enc(keyReq),
-    secondaryLines,
-    tagsJoined,
-    enc(input.ownerWalletBase58 || ''),
-    enc(input.agentWallet || ''),
-    enc(input.donationWallet || ''),
-    enc(input.nonce || ''),
-    enc(input.tsISO),
-  ].join('\n')
+  return parts.join('\n')
 }
 
 export function toBase64(bytes: Uint8Array): string {

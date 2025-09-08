@@ -128,7 +128,7 @@ curl -H 'apikey: $ANON' -H 'Authorization: Bearer $ANON' \
 
 # 3) List tags (simple GET)
 curl -H 'apikey: $ANON' -H 'Authorization: Bearer $ANON' \
-  'https://YOUR-PROJECT.supabase.co/rest/v1/tags?select=id,slug,label,category&order=label.asc'
+  'https://YOUR-PROJECT.supabase.co/rest/v1/tags'
 ```
 
 ### Data modes

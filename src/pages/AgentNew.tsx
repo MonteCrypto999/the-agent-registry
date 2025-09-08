@@ -3,14 +3,14 @@ import AgentForm, { type AgentFormValues } from '../components/AgentForm'
 import { useData } from '../providers/DataProvider'
 import { useNavigate } from 'react-router-dom'
 import { useMemo, useState } from 'react'
-import { buildAgentCreateMessage, toBase64 } from '../lib/signing'
+import { buildAgentCreateMessage } from '../lib/signing'
 import { TAGS } from '../seed'
 import { getTagClasses } from '../lib/tagStyles'
 
 const MAX_TAGS = 4
 
 export default function AgentNew() {
-	const { publicKey, connected } = useWallet()
+	const { publicKey, connected, signMessage } = useWallet() as any
 	const { createAgent, createAgentSigned } = useData() as any
 	const navigate = useNavigate()
 	const [tagSlugs, setTagSlugs] = useState<string[]>([])
@@ -62,8 +62,8 @@ export default function AgentNew() {
 				nonce,
 				tsISO,
 			})
-			// @ts-ignore signMessage present when wallet supports it
-			const signatureBytes: Uint8Array = await (window as any).solana?.signMessage ? (await (window as any).solana.signMessage(new TextEncoder().encode(msg), 'utf8')).signature : await (async () => { throw new Error('Wallet does not support message signing') })()
+			if (typeof signMessage !== 'function') throw new Error('Wallet does not support message signing')
+			const signatureBytes: Uint8Array = await signMessage(new TextEncoder().encode(msg))
 			const pubkeyBytes = publicKey.toBytes()
 			const result = await (createAgentSigned ? createAgentSigned({
 				slug: v.name,

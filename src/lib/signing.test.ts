@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { buildAgentCreateMessage, __test__buildMessageFields } from './signing'
 
 describe('signing', () => {
-  it('builds canonical message with base64-encoded fields', () => {
+  it('builds human-readable v2 message', () => {
     const msg = buildAgentCreateMessage({
       slug: 'my-agent',
       name: 'Name',
@@ -39,16 +39,13 @@ describe('signing', () => {
       nonce: 'nonce-1',
       tsISO: '2025-01-01T00:00:00Z',
     })
-    expect(parts[0]).toBe('v1')
-    // fields 1..9 base64; check one example
-    expect(parts[1]).toMatch(/^[A-Za-z0-9+/=]+$/)
-    // tag lines base64
-    expect(parts[11]).toMatch(/^[A-Za-z0-9+/=]+$/)
-    // wallets base64 as well
-    expect(parts[13]).toMatch(/^[A-Za-z0-9+/=]+$/)
-    expect(parts[14]).toMatch(/^[A-Za-z0-9+/=]+$/)
-    // entire message is non-empty
-    expect(msg.length).toBeGreaterThan(10)
+    expect(parts[0]).toBe('v2')
+    expect(parts[1]).toBe('Agent')
+    expect(parts[2]).toBe('slug: my-agent')
+    expect(parts[3]).toBe('name: Name')
+    expect(msg).toContain('ownerWallet:')
+    expect(msg).toContain('agentWallet:')
+    expect(msg).toContain('ts: 2025-01-01T00:00:00Z')
   })
 })
 
