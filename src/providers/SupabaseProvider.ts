@@ -45,7 +45,6 @@ export async function supabaseGetAgentById(supabase: SupabaseClient, id: string)
     const { data: agents, error } = await supabase
         .from('agents')
         .select('id, slug, name, summary, thumbnail_url, website_url, socials, owner_wallet, status, donation_wallet, created_at')
-        .select('id, slug, name, summary, thumbnail_url, website_url, socials, owner_wallet, status, donation_wallet, created_at')
         .eq('id', id)
         .limit(1)
     if (error) throw error
@@ -66,6 +65,50 @@ export async function supabaseGetAgentById(supabase: SupabaseClient, id: string)
     }))
     const tgs = (tagRows ?? []).map((t: any) => ({ id: t.tags.id, slug: t.tags.slug, label: t.tags.label, category: t.tags.category }))
     return { id: a.id, slug: a.slug, name: a.name, summary: a.summary, thumbnailUrl: a.thumbnail_url, websiteUrl: a.website_url, socials: a.socials, ownerWallet: a.owner_wallet, status: a.status, donationWallet: a.donation_wallet, createdAt: a.created_at, interfaces: its, tags: tgs } as any
+}
+
+export async function supabaseListTags(supabase: SupabaseClient): Promise<Array<{ id: string; slug: string; label: string; category: string | null }>> {
+  const { data, error } = await supabase
+    .from('tags')
+    .select('id, slug, label, category')
+    .order('label', { ascending: true })
+  if (error) throw error
+  return (data ?? []) as any
+}
+
+export async function supabaseSearchAgentsByTags(
+  supabase: SupabaseClient,
+  slugs: string[],
+  matchAll: boolean = true,
+  limit: number = 20,
+  offset: number = 0,
+): Promise<AgentWithRelations[]> {
+  const { data: ids, error } = await supabase.rpc('search_agents_by_tags', { p_slugs: slugs, p_match_all: matchAll, p_limit: limit, p_offset: offset })
+  if (error) throw error
+  const agentIds = (ids as any[]).map(r => r.id)
+  if (agentIds.length === 0) return []
+  const { data: agents, error: e1 } = await supabase
+    .from('agents')
+    .select('id, slug, name, summary, thumbnail_url, website_url, socials, owner_wallet, status, donation_wallet, created_at')
+    .in('id', agentIds)
+  if (e1) throw e1
+  const { data: interfaces, error: e2 } = await supabase
+    .from('agent_interfaces')
+    .select('id, agent_id, kind, url, access_policy, key_request_url, is_primary, display_name, notes')
+    .in('agent_id', agentIds)
+  if (e2) throw e2
+  const { data: tagRows, error: e3 } = await supabase
+    .from('agent_tags')
+    .select('agent_id, tags(id, slug, label, category)')
+    .in('agent_id', agentIds)
+  if (e3) throw e3
+  return (agents ?? []).map((a: any) => {
+    const its = (interfaces ?? []).filter((i: any) => i.agent_id === a.id).map((i: any) => ({
+      id: i.id, agentId: i.agent_id, kind: i.kind, url: i.url, accessPolicy: i.access_policy, keyRequestUrl: i.key_request_url, isPrimary: i.is_primary, displayName: i.display_name, notes: i.notes,
+    }))
+    const tgs = (tagRows ?? []).filter((t: any) => t.agent_id === a.id).map((t: any) => ({ id: t.tags.id, slug: t.tags.slug, label: t.tags.label, category: t.tags.category }))
+    return { id: a.id, slug: a.slug, name: a.name, summary: a.summary, thumbnailUrl: a.thumbnail_url, websiteUrl: a.website_url, socials: a.socials, ownerWallet: a.owner_wallet, status: a.status, donationWallet: a.donation_wallet, createdAt: a.created_at, interfaces: its, tags: tgs }
+  }) as any
 }
 
 export async function supabaseCreateAgent(supabase: SupabaseClient, input: CreateAgentInput): Promise<{ id: string; slug: string }> {
@@ -164,7 +207,7 @@ export async function supabaseCreateAgentSigned(
     notes: s.notes ?? '',
   }))
 
-  const msg = buildAgentCreateMessage({
+  buildAgentCreateMessage({
     slug: input.slug,
     name: input.name,
     summary: input.summary,
@@ -172,7 +215,7 @@ export async function supabaseCreateAgentSigned(
     websiteUrl: input.websiteUrl ?? '',
     primaryKind: input.primaryInterface.kind,
     primaryUrl: input.primaryInterface.url,
-    primaryAccess: input.primaryInterface.kind === 'api' ? (input.primaryInterface.accessPolicy ?? 'public') : '',
+    primaryAccess: input.primaryInterface.kind === 'api' ? (input.primaryInterface.accessPolicy ?? null) : null,
     keyRequestUrl: input.primaryInterface.kind === 'api' ? (input.primaryInterface.keyRequestUrl ?? '') : '',
     secondary,
     tagSlugs: input.tagSlugs ?? [],

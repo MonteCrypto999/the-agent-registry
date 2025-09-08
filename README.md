@@ -27,6 +27,8 @@ bun run dev
 
 Open the URL shown by Vite. By default, local mode loads data from an SQL dump if present; otherwise it falls back to a built-in TypeScript seed.
 
+
+
 ### Where to put the local SQL dump
 
 - Place your plain-text SQL file here:
@@ -80,6 +82,55 @@ Notes:
 - The app automatically switches to online mode if `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set. You can also force via URL: `?mode=online` (or go back to local with `?mode=local`).
 - Reads (lists/details) are implemented against Supabase. Advanced writes may require Edge Functions depending on your security rules.
 
+### API quick examples
+
+Local (dev, when `VITE_DATA_MODE=local`)
+
+```bash
+# Base URL (default Vite): http://localhost:5173
+
+# 1) One agent by id/slug/agent wallet
+curl 'http://localhost:5173/api/agents/starter-agent'
+
+# 2) Search agents by tags (match all by default)
+curl 'http://localhost:5173/api/agents?tags=api,docs&match=all&page=1&limit=20'
+
+# 3) List tags
+curl 'http://localhost:5173/api/tags'
+```
+
+Supabase (online)
+
+Headers required for all requests:
+```
+apikey: <YOUR_SUPABASE_ANON_KEY>
+Authorization: Bearer <YOUR_SUPABASE_ANON_KEY>
+```
+
+```bash
+# Base URL: https://YOUR-PROJECT.supabase.co
+
+# 1) One agent by id/slug/agent wallet (simple GET)
+curl -H 'apikey: $ANON' -H 'Authorization: Bearer $ANON' \
+  'https://YOUR-PROJECT.supabase.co/rest/v1/agents_with_relations?id=eq.<uuid>'
+# or by slug:
+curl -H 'apikey: $ANON' -H 'Authorization: Bearer $ANON' \
+  'https://YOUR-PROJECT.supabase.co/rest/v1/agents_with_relations?slug=eq.<slug>'
+# or by agent wallet:
+curl -H 'apikey: $ANON' -H 'Authorization: Bearer $ANON' \
+  'https://YOUR-PROJECT.supabase.co/rest/v1/agents_with_relations?agent_wallet=eq.<base58>'
+
+# 2) Search agents by tags (simple GET)
+# Uses the tag_slugs array on the view with the "contains" operator (cs)
+# URL-encode braces: {api,docs} → %7Bapi,docs%7D
+curl -H 'apikey: $ANON' -H 'Authorization: Bearer $ANON' \
+  'https://YOUR-PROJECT.supabase.co/rest/v1/agents_with_relations?tag_slugs=cs.%7Bapi,docs%7D'
+
+# 3) List tags (simple GET)
+curl -H 'apikey: $ANON' -H 'Authorization: Bearer $ANON' \
+  'https://YOUR-PROJECT.supabase.co/rest/v1/tags?select=id,slug,label,category&order=label.asc'
+```
+
 ### Data modes
 
 - `local` (default): uses PGlite (embedded Postgres) with schema and `public/data/seed.sql`.
@@ -90,10 +141,9 @@ You can select via `.env.local` with `VITE_DATA_MODE=local|online|seed` or overr
 
 ### Supabase RLS
 
-- Row Level Security (RLS) is enabled in the migration. Policies allow:
-  - Public reads on `agents`, `agent_interfaces`, and `agent_tags`.
-  - Inserts/updates for `agents` and related tables (interfaces/tags) with basic checks (e.g., the related agent exists). This is intentional for the demo so you can create/edit without logging in.
-- In other words, the UI can create a new agent and attach interfaces/tags because the database policies permit it for anonymous users in this starter. If you need auth + ownership, tighten the policies (e.g., require an authenticated user and match an owner field) before going to production.
+- Public reads on `agents`, `agent_interfaces`, `agent_tags`, and `tags`.
+- All direct inserts/updates/deletes are blocked; writes go through a signed RPC.
+- Signed RPC `create_agent_signed` verifies Ed25519 signature, timestamp window, anti‑replay (nonce), wallet/pubkey match, with minimal rate limiting. `used_nonces` is fully private.
 
 ### About the Supabase anon key
 

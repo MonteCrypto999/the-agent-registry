@@ -233,12 +233,86 @@ begin
 end;
 $$;
 
+-- Search RPC by tags (match all by default)
+create or replace function public.search_agents_by_tags(p_slugs text[], p_match_all boolean default true, p_limit int default 20, p_offset int default 0)
+returns table (id uuid)
+language sql stable
+as $$
+  with valid as (
+    select array_agg(slug) as slugs from public.tags where slug = any (p_slugs)
+  ),
+  matched as (
+    select at.agent_id
+    from public.agent_tags at
+    join public.tags t on t.id = at.tag_id
+    where t.slug = any ((select slugs from valid))
+    group by at.agent_id
+    having count(*) >= case when p_match_all then array_length((select slugs from valid),1) else 1 end
+  )
+  select agent_id as id from matched
+  order by id
+  limit p_limit offset p_offset;
+$$;
+
+grant execute on function public.search_agents_by_tags(text[], boolean, int, int) to anon;
+
+-- Simple GET-friendly view with embedded relations and tag_slugs array
+create or replace view public.agents_with_relations as
+select
+  a.id,
+  a.slug,
+  a.name,
+  a.summary,
+  a.thumbnail_url,
+  a.website_url,
+  a.socials,
+  a.owner_wallet,
+  a.agent_wallet,
+  a.status,
+  a.donation_wallet,
+  a.created_at,
+  coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'id', i.id,
+      'agentId', i.agent_id,
+      'kind', i.kind,
+      'url', i.url,
+      'accessPolicy', i.access_policy,
+      'keyRequestUrl', i.key_request_url,
+      'isPrimary', i.is_primary,
+      'displayName', i.display_name,
+      'notes', i.notes
+    ) order by i.is_primary desc)
+    from public.agent_interfaces i
+    where i.agent_id = a.id
+  ), '[]'::jsonb) as interfaces,
+  coalesce((
+    select jsonb_agg(jsonb_build_object(
+      'id', t.id,
+      'slug', t.slug,
+      'label', t.label,
+      'category', t.category
+    ) order by t.label)
+    from public.agent_tags at
+    join public.tags t on t.id = at.tag_id
+    where at.agent_id = a.id
+  ), '[]'::jsonb) as tags,
+  coalesce((
+    select array_agg(t.slug order by t.slug)
+    from public.agent_tags at
+    join public.tags t on t.id = at.tag_id
+    where at.agent_id = a.id
+  ), array[]::text[]) as tag_slugs
+from public.agents a
+where a.status = 'published';
+
 -- Enable RLS
 alter table public.agents enable row level security;
 alter table public.agent_interfaces enable row level security;
 alter table public.agent_tags enable row level security;
 alter table public.tags enable row level security;
 alter table public.used_nonces enable row level security;
+alter view public.agents_with_relations set (security_invoker = on);
 
 -- Public read policies (allow reads for anonymous)
 drop policy if exists agents_read on public.agents;
@@ -309,6 +383,9 @@ drop policy if exists used_nonces_update on public.used_nonces;
 create policy used_nonces_update on public.used_nonces for update using (false) with check (false);
 drop policy if exists used_nonces_delete on public.used_nonces;
 create policy used_nonces_delete on public.used_nonces for delete using (false);
+
+-- View: readable by anon (inherits underlying table RLS via security_invoker)
+grant select on public.agents_with_relations to anon;
 
 
 
